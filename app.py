@@ -1,5 +1,6 @@
 import numpy as np
 import gradio as gr
+
 from click_events import update_point_prompts, segment_with_prompts
 
 with gr.Blocks() as demo:
@@ -16,7 +17,7 @@ with gr.Blocks() as demo:
         with gr.Column(scale=2):
             input_image = gr.Image(
                 label="Input Image",
-                source="upload"
+                sources="upload"
             )
             
             with gr.Row():
