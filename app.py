@@ -1,69 +1,269 @@
-import numpy as np
+import os
+
 import gradio as gr
+import numpy as np
+import torch
+from mobile_sam import SamAutomaticMaskGenerator, SamPredictor, sam_model_registry
+from PIL import ImageDraw
+from utils.tools import box_prompt, format_results, point_prompt
+from utils.tools_gradio import fast_process
 
-from click_events import update_point_prompts, segment_with_prompts
 
-with gr.Blocks() as demo:
-    gr.Markdown('''
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+sam_checkpoint = "utils/mobile_sam.pt"
+model_type = "vit_t"
+
+mobile_sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+mobile_sam = mobile_sam.to(device=device)
+mobile_sam.eval()
+
+mask_generator = SamAutomaticMaskGenerator(mobile_sam)
+predictor = SamPredictor(mobile_sam)
+
+# Description
+title = "<center><strong><font size='8'>MobileSAM<font></strong></center>"
+
+description_e = """
+                
+              """
+
+description_p = """ 
+
+              """
+
+examples = [
+    ["utils/assets/picture3.jpg"],
+    ["utils/assets/picture4.jpg"],
+    ["utils/assets/picture5.jpg"],
+    ["utils/assets/picture6.jpg"],
+    ["utils/assets/picture1.jpg"],
+    ["utils/assets/picture2.jpg"],
+]
+
+default_example = examples[0]
+
+css = "h1 { text-align: center } .about { text-align: justify; padding-left: 10%; padding-right: 10%; }"
+
+
+@torch.no_grad()
+def segment_everything(
+    image,
+    input_size=1024,
+    better_quality=False,
+    withContours=True,
+    use_retina=True,
+    mask_random_color=True,
+):
+    global mask_generator
+
+    input_size = int(input_size)
+    w, h = image.size
+    scale = input_size / max(w, h)
+    new_w = int(w * scale)
+    new_h = int(h * scale)
+    image = image.resize((new_w, new_h))
+
+    nd_image = np.array(image)
+    annotations = mask_generator.generate(nd_image)
+
+    fig = fast_process(
+        annotations=annotations,
+        image=image,
+        device=device,
+        scale=(1024 // input_size),
+        better_quality=better_quality,
+        mask_random_color=mask_random_color,
+        bbox=None,
+        use_retina=use_retina,
+        withContours=withContours,
+    )
+    return fig
+
+
+def segment_with_points(
+    image,
+    input_size=1024,
+    better_quality=False,
+    withContours=True,
+    use_retina=True,
+    mask_random_color=True,
+):
+    global global_points
+    global global_point_label
+
+    input_size = int(input_size)
+    w, h = image.size
+    scale = input_size / max(w, h)
+    new_w = int(w * scale)
+    new_h = int(h * scale)
+    image = image.resize((new_w, new_h))
+
+    scaled_points = np.array(
+        [[int(x * scale) for x in point] for point in global_points]
+    )
+    scaled_point_label = np.array(global_point_label)
+
+    if scaled_points.size == 0 and scaled_point_label.size == 0:
+        print("No points selected")
+        return image, image
+
+    print(scaled_points, scaled_points is not None)
+    print(scaled_point_label, scaled_point_label is not None)
+
+    nd_image = np.array(image)
+    predictor.set_image(nd_image)
+    masks, scores, logits = predictor.predict(
+        point_coords=scaled_points,
+        point_labels=scaled_point_label,
+        multimask_output=True,
+    )
+
+    results = format_results(masks, scores, logits, 0)
+
+    annotations, _ = point_prompt(
+        results, scaled_points, scaled_point_label, new_h, new_w
+    )
+    annotations = np.array([annotations])
+
+    fig = fast_process(
+        annotations=annotations,
+        image=image,
+        device=device,
+        scale=(1024 // input_size),
+        better_quality=better_quality,
+        mask_random_color=mask_random_color,
+        bbox=None,
+        use_retina=use_retina,
+        withContours=withContours,
+    )
+
+    global_points = []
+    global_point_label = []
+    # return fig, None
+    return fig, image
+
+
+def get_points_with_draw(image, label, evt: gr.SelectData):
+    global global_points
+    global global_point_label
+
+    x, y = evt.index[0], evt.index[1]
+    point_radius, point_color = 15, (255, 255, 0) if label == "Add Mask" else (
+        255,
+        0,
+        255,
+    )
+    global_points.append([x, y])
+    global_point_label.append(1 if label == "Add Mask" else 0)
+
+    print(x, y, label == "Add Mask")
+
+
+    draw = ImageDraw.Draw(image)
+    draw.ellipse(
+        [(x - point_radius, y - point_radius), (x + point_radius, y + point_radius)],
+        fill=point_color,
+    )
+    return image
+
+
+cond_img_e = gr.Image(label="Input", value=default_example[0], type="pil")
+cond_img_p = gr.Image(label="Input with points", value=default_example[0], type="pil")
+
+segm_img_e = gr.Image(label="Segmented Image", interactive=False, type="pil")
+segm_img_p = gr.Image(
+    label="Segmented Image with points", interactive=False, type="pil"
+)
+
+global_points = []
+global_point_label = []
+
+input_size_slider = gr.components.Slider(
+    minimum=512,
+    maximum=1024,
+    value=1024,
+    step=64,
+    label="Input_size",
+    info="Our model was trained on a size of 1024",
+)
+
+with gr.Blocks(css=css, title="Faster Segment Anything(MobileSAM)") as demo:
+    with gr.Row():
+        with gr.Column(scale=1):
+            # Title
+            gr.Markdown('''
         <h1 style="text-align: center;">Segment and Edit/Remove</h1>
         <h3 style="text-align: center;">DSG, IIT Roorkee</h3>
         <br> <br>
     ''')
 
-    with gr.Row():
-        with gr.Column(scale=1):
-            pass
+   
+    with gr.Tab("Point mode"):
+        # Images
+        with gr.Row(variant="panel"):
+            with gr.Column(scale=1):
+                cond_img_p.render()
 
-        with gr.Column(scale=2):
-            input_image = gr.Image(
-                label="Input Image",
-                sources="upload"
-            )
-            
-            with gr.Row():
-                with gr.Column():
-                    point_prompt = gr.Textbox(
-                        label="Point Prompts",
-                        lines=1,
-                        interactive=False
+            with gr.Column(scale=1):
+                segm_img_p.render()
+
+        # Submit & Clear
+        with gr.Row():
+            with gr.Column():
+                with gr.Row():
+                    add_or_remove = gr.Radio(
+                        label='Point Prompts',
+                        choices=["Add Mask", "Remove Area"],
+                        value="Add Mask",
+                        info='Positive points are included in the segment,negative points are excluded'
+
                     )
-                    point_type = gr.Radio(
-                        choices=["positive", "negative"],
-                        value="positive",
-                        label="Point Type",
-                        info="Positive points are included in the segment, negative points are excluded."
-                    )
-                
-                text_prompt = gr.Textbox(
+
+                    text_prompt = gr.Textbox(
                     label="Text Prompts",
                     lines=6,
                     interactive=True
                 )
+                # with gr.Row():
+                    # with gr.Column():
+            
 
-            with gr.Row():
-                clear_prompts = gr.Button(value="Clear Prompts")
-                submit_prompts = gr.Button(value="Submit Prompts")
+                gr.Markdown("Try some of the examples below ⬇️")
+                gr.Examples(
+                    examples=examples,
+                    inputs=[cond_img_p],
+                    # outputs=segm_img_p,
+                    # fn=segment_with_points,
+                    # cache_examples=True,
+                    examples_per_page=4,
+                )
 
-        with gr.Column(scale=1):
-            pass
+            with gr.Column():
+                segment_btn_p = gr.Button(
+                    "Start segmenting", variant="primary"
+                )
+                clear_btn_p = gr.Button("Restart", variant="secondary")
+                # Description
+                gr.Markdown(description_p)
 
-        input_image.select(
-            update_point_prompts,
-            inputs=[point_prompt, point_type],
-            outputs=point_prompt
-        )
-        
-        clear_prompts.click(
-            lambda: (None, None),
-            inputs=None, 
-            outputs=[point_prompt, text_prompt],
-            queue=False
-        )
-        
-        submit_prompts.click(
-            segment_with_prompts,
-            inputs=[input_image, point_prompt, text_prompt],
-            outputs=input_image
-        )
+    cond_img_p.select(get_points_with_draw, [cond_img_p, add_or_remove], cond_img_p)
 
-demo.launch()
+
+    segment_btn_p.click(
+        segment_with_points, inputs=[cond_img_p], outputs=[segm_img_p, cond_img_p]
+    )
+
+    def clear():
+        return None, None
+
+    def clear_text():
+        return None, None, None
+
+    # clear_btn_e.click(clear, outputs=[cond_img_e, segm_img_e])
+    clear_btn_p.click(clear, outputs=[cond_img_p, segm_img_p])
+
+demo.queue()
+demo.launch(share=True)
