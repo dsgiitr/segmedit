@@ -1,8 +1,0 @@
-gradio==4.10.0
-matplotlib==3.8.2
-numpy==1.26.2
-Pillow==10.1.0
-torch==2.1.2
-git+https://github.com/ChaoningZhang/MobileSAM.git
-timm
-opencv-python
