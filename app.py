@@ -8,6 +8,7 @@ from PIL import ImageDraw
 from utils.tools import box_prompt, format_results, point_prompt
 from utils.tools_gradio import fast_process
 
+from utils.editing import inpaint_area
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -22,6 +23,7 @@ mobile_sam.eval()
 
 mask_generator = SamAutomaticMaskGenerator(mobile_sam)
 predictor = SamPredictor(mobile_sam)
+mask = None
 
 # Description
 title = "<center><strong><font size='8'>MobileSAM<font></strong></center>"
@@ -68,8 +70,10 @@ def segment_everything(
 
     nd_image = np.array(image)
     annotations = mask_generator.generate(nd_image)
+    
+    global mask
 
-    fig = fast_process(
+    fig, mask = fast_process(
         annotations=annotations,
         image=image,
         device=device,
@@ -79,7 +83,7 @@ def segment_everything(
         bbox=None,
         use_retina=use_retina,
         withContours=withContours,
-    )
+    )    
     return fig
 
 
@@ -127,8 +131,10 @@ def segment_with_points(
         results, scaled_points, scaled_point_label, new_h, new_w
     )
     annotations = np.array([annotations])
+    
+    global mask
 
-    fig = fast_process(
+    fig, mask = fast_process(
         annotations=annotations,
         image=image,
         device=device,
@@ -151,16 +157,15 @@ def get_points_with_draw(image, label, evt: gr.SelectData):
     global global_point_label
 
     x, y = evt.index[0], evt.index[1]
-    point_radius, point_color = 15, (255, 255, 0) if label == "Add Mask" else (
+    point_radius, point_color = 15, (255, 255, 0) if label == "Add Area" else (
         255,
         0,
         255,
     )
     global_points.append([x, y])
-    global_point_label.append(1 if label == "Add Mask" else 0)
+    global_point_label.append(1 if label == "Add Area" else 0)
 
-    print(x, y, label == "Add Mask")
-
+    print(x, y, label == "Add Area")
 
     draw = ImageDraw.Draw(image)
     draw.ellipse(
@@ -170,10 +175,10 @@ def get_points_with_draw(image, label, evt: gr.SelectData):
     return image
 
 
-cond_img_e = gr.Image(label="Input", value=default_example[0], type="pil")
+# cond_img_e = gr.Image(label="Input", value=default_example[0], type="pil")
 cond_img_p = gr.Image(label="Input with points", value=default_example[0], type="pil")
 
-segm_img_e = gr.Image(label="Segmented Image", interactive=False, type="pil")
+# segm_img_e = gr.Image(label="Segmented Image", interactive=False, type="pil")
 segm_img_p = gr.Image(
     label="Segmented Image with points", interactive=False, type="pil"
 )
@@ -189,6 +194,14 @@ input_size_slider = gr.components.Slider(
     label="Input_size",
     info="Our model was trained on a size of 1024",
 )
+
+
+def erase(image, display_img):
+    # inpaint the image with the mask
+    global mask
+    inpainted_image = inpaint_area(image, mask)
+    return display_img, inpainted_image
+
 
 with gr.Blocks(css=css, title="Faster Segment Anything(MobileSAM)") as demo:
     with gr.Row():
@@ -215,21 +228,17 @@ with gr.Blocks(css=css, title="Faster Segment Anything(MobileSAM)") as demo:
             with gr.Column():
                 with gr.Row():
                     add_or_remove = gr.Radio(
-                        label='Point Prompts',
-                        choices=["Add Mask", "Remove Area"],
-                        value="Add Mask",
-                        info='Positive points are included in the segment,negative points are excluded'
-
+                        label="Point Prompts",
+                        choices=["Add Area", "Remove Area"],
+                        value="Add Area",
+                        info="Positive points are included in the segment,negative points are excluded",
                     )
 
                     text_prompt = gr.Textbox(
-                    label="Text Prompts",
-                    lines=6,
-                    interactive=True
-                )
+                        label="Text Prompts", lines=6, interactive=True
+                    )
                 # with gr.Row():
-                    # with gr.Column():
-            
+                # with gr.Column():
 
                 gr.Markdown("Try some of the examples below ⬇️")
                 gr.Examples(
@@ -242,18 +251,19 @@ with gr.Blocks(css=css, title="Faster Segment Anything(MobileSAM)") as demo:
                 )
 
             with gr.Column():
-                segment_btn_p = gr.Button(
-                    "Start segmenting", variant="primary"
-                )
+                segment_btn_p = gr.Button("Start segmenting", variant="primary")
                 clear_btn_p = gr.Button("Restart", variant="secondary")
+                # create a button which finalizes the mask and takes to new block
+                erase_btn = gr.Button("Erase", variant="secondary")
                 # Description
                 gr.Markdown(description_p)
 
     cond_img_p.select(get_points_with_draw, [cond_img_p, add_or_remove], cond_img_p)
 
-
     segment_btn_p.click(
-        segment_with_points, inputs=[cond_img_p], outputs=[segm_img_p, cond_img_p]
+        segment_with_points,
+        inputs=[cond_img_p],
+        outputs=[segm_img_p, cond_img_p],
     )
 
     def clear():
@@ -265,5 +275,10 @@ with gr.Blocks(css=css, title="Faster Segment Anything(MobileSAM)") as demo:
     # clear_btn_e.click(clear, outputs=[cond_img_e, segm_img_e])
     clear_btn_p.click(clear, outputs=[cond_img_p, segm_img_p])
 
-demo.queue()
-demo.launch(share=True)
+    # close the demo and take to new block when finalize button is clicked
+    erase_btn.click(erase, inputs=[cond_img_p, segm_img_p], outputs=[cond_img_p, segm_img_p])
+
+
+if __name__ == "__main__":
+    demo.queue()
+    demo.launch(share=True)
