@@ -88,7 +88,7 @@ def fast_process(
         overlay_contour = Image.fromarray((contour_mask * 255).astype(np.uint8), "RGBA")
         image.paste(overlay_contour, (0, 0), overlay_contour)
 
-    return image
+    return image, overlay_inner
 
 
 # CPU post process
