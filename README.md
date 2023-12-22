@@ -9,7 +9,7 @@ git clone https://github.com/dsgiitr/segmedit.git
 ```
 - Install dependencies
 ```
- pip3 install -r requirements.txt 
+ conda env create --file env.yml
  ```
 - Run app.py
 ``` 
