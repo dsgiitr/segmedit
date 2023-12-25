@@ -26,7 +26,7 @@ predictor = SamPredictor(mobile_sam)
 mask = None
 
 # Description
-title = "<center><strong><font size='8'>MobileSAM<font></strong></center>"
+title = "<center><strong><font size='8'>SEGMEDIT<font></strong></center>"
 
 description_e = """
                 
@@ -203,7 +203,7 @@ def erase(image, display_img):
     return display_img, inpainted_image
 
 
-with gr.Blocks(css=css, title="Faster Segment Anything(MobileSAM)") as demo:
+with gr.Blocks(css=css, title="SEGMEDIT") as demo:
     with gr.Row():
         with gr.Column(scale=1):
             # Title
