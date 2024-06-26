@@ -11,7 +11,17 @@ from utils.tools_gradio import fast_process
 from utils.editing import inpaint_area
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = None
+
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+elif torch.cuda.is_available():
+    device = torch.device("cuda")
+else:
+    device = torch.device("cpu")
+
+print(device)
+
 
 
 sam_checkpoint = "models/mobile_sam.pt"
