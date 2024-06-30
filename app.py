@@ -4,14 +4,14 @@ import gradio as gr
 import numpy as np
 import torch
 from mobile_sam import SamAutomaticMaskGenerator, SamPredictor, sam_model_registry
-from PIL import Image,ImageDraw
+from PIL import Image, ImageDraw
 from utils.tools import box_prompt, format_results, point_prompt
 from utils.tools_gradio import fast_process
 
 from utils.editing import inpaint_area
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
 
 
 sam_checkpoint = "utils/mobile_sam.pt"
