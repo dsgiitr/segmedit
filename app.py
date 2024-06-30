@@ -4,27 +4,17 @@ import gradio as gr
 import numpy as np
 import torch
 from mobile_sam import SamAutomaticMaskGenerator, SamPredictor, sam_model_registry
-from PIL import ImageDraw
+from PIL import Image,ImageDraw
 from utils.tools import box_prompt, format_results, point_prompt
 from utils.tools_gradio import fast_process
 
 from utils.editing import inpaint_area
 
 
-device = None
-
-if torch.backends.mps.is_available():
-    device = torch.device("mps")
-elif torch.cuda.is_available():
-    device = torch.device("cuda")
-else:
-    device = torch.device("cpu")
-
-print(device)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-
-sam_checkpoint = "models/mobile_sam.pt"
+sam_checkpoint = "utils/mobile_sam.pt"
 model_type = "vit_t"
 
 mobile_sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
@@ -212,6 +202,28 @@ def erase(image, display_img):
     inpainted_image = inpaint_area(image, mask)
     return display_img, inpainted_image
 
+def remove_background(image, display_img):
+    global mask
+    mask = np.array(mask)
+    if len(mask.shape) == 3 and mask.shape[2] > 1:
+        combined_mask = np.sum(mask, axis=2)  
+        combined_mask = np.clip(combined_mask, 0, 1)  
+    else:
+        combined_mask = mask
+
+    binary_mask = combined_mask.astype(np.uint8)
+    
+    image_np = np.array(image)
+    
+    if len(image_np.shape) == 3:
+        binary_mask = np.repeat(binary_mask[:, :, np.newaxis], 3, axis=2)
+    
+    foreground = image_np * binary_mask
+    
+    foreground_image = Image.fromarray(foreground)
+    
+    return display_img, foreground_image
+
 
 with gr.Blocks(css=css, title="SEGMEDIT") as demo:
     with gr.Row():
@@ -265,6 +277,7 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
                 clear_btn_p = gr.Button("Restart", variant="secondary")
                 # create a button which finalizes the mask and takes to new block
                 erase_btn = gr.Button("Erase", variant="secondary")
+                remove_bg_btn = gr.Button("Remove Background", variant ="secondary")
                 # Description
                 gr.Markdown(description_p)
 
@@ -287,7 +300,7 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
 
     # close the demo and take to new block when finalize button is clicked
     erase_btn.click(erase, inputs=[cond_img_p, segm_img_p], outputs=[cond_img_p, segm_img_p])
-
+    remove_bg_btn.click(remove_background, inputs=[cond_img_p, segm_img_p], outputs=[cond_img_p,segm_img_p])
 
 if __name__ == "__main__":
     demo.queue()
