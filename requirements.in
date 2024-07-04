@@ -1,0 +1,12 @@
+matplotlib
+numpy
+opencv-python
+pillow
+tqdm
+typing
+gradio
+torch
+timm
+diffusers
+simple-lama-inpainting
+git+https://github.com/ChaoningZhang/MobileSAM.git

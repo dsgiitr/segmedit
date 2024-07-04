@@ -14,7 +14,7 @@ from utils.editing import inpaint_area
 device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
 
 
-sam_checkpoint = "utils/mobile_sam.pt"
+sam_checkpoint = "models/mobile_sam.pt"
 model_type = "vit_t"
 
 mobile_sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
