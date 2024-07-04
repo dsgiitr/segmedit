@@ -1,5 +1,5 @@
 import os
-
+import cv2
 import gradio as gr
 import numpy as np
 import torch
@@ -9,6 +9,7 @@ from utils.tools import box_prompt, format_results, point_prompt
 from utils.tools_gradio import fast_process
 
 from utils.editing import inpaint_area
+from utils.editing import inpaint_area_using_box
 
 
 device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
@@ -175,6 +176,7 @@ def get_points_with_draw(image, label, evt: gr.SelectData):
     return image
 
 
+
 # cond_img_e = gr.Image(label="Input", value=default_example[0], type="pil")
 cond_img_p = gr.Image(label="Input with points", value=default_example[0], type="pil")
 
@@ -182,6 +184,11 @@ cond_img_p = gr.Image(label="Input with points", value=default_example[0], type=
 segm_img_p = gr.Image(
     label="Segmented Image with points", interactive=False, type="pil"
 )
+
+
+
+cond_img_b = gr.Image(label="Input with box", value=default_example[0], type="pil")
+segm_img_b = gr.Image(label="Segmented Image with box", interactive=False, type="pil")
 
 global_points = []
 global_point_label = []
@@ -202,28 +209,98 @@ def erase(image, display_img):
     inpainted_image = inpaint_area(image, mask)
     return display_img, inpainted_image
 
-def remove_background(image, display_img):
-    global mask
-    mask = np.array(mask)
-    if len(mask.shape) == 3 and mask.shape[2] > 1:
-        combined_mask = np.sum(mask, axis=2)  
-        combined_mask = np.clip(combined_mask, 0, 1)  
-    else:
-        combined_mask = mask
 
-    binary_mask = combined_mask.astype(np.uint8)
-    
-    image_np = np.array(image)
-    
-    if len(image_np.shape) == 3:
-        binary_mask = np.repeat(binary_mask[:, :, np.newaxis], 3, axis=2)
-    
-    foreground = image_np * binary_mask
-    
-    foreground_image = Image.fromarray(foreground)
-    
-    return display_img, foreground_image
+def erase_with_box(image,display_image):
+    mask=create_masked_image_from_rectange(image)
+    inpainted_image = inpaint_area_using_box(image,mask)
+    return display_image,inpainted_image
 
+
+
+def mask_with_rectangle(masked_image):
+    pass
+    # Add diffusion model functionality here
+
+global_start_point = None
+current_rectangle = None
+x0,y0,x1,y1=0,0,0,0
+
+def handle_rectangle_events(image,label, evt: gr.SelectData):
+    global global_start_point, current_rectangle
+    global x0,y0,x1,y1
+
+    x, y = evt.index[0], evt.index[1]
+    if global_start_point is None:
+        global_start_point = (x, y)
+    x0, y0 = global_start_point
+    x1, y1 = x, y
+
+    if (x0>x1):
+        temp=x0
+        x0=x1
+        x1=temp
+
+    if (y0>y1):
+        temp=y0
+        y0=y1
+        y1=temp
+
+    image_with_rectangle = image.copy()
+    draw = ImageDraw.Draw(image_with_rectangle)
+    draw.rectangle([x0, y0, x1, y1], outline="red", width=3)
+
+    current_rectangle = [x0, y0, x1, y1]
+
+    if (x0!=x1) and (y0!=y1):
+        masked_image = image_with_rectangle.copy()
+
+        masked_image=cv2.cvtColor(np.array(masked_image), cv2.COLOR_RGB2BGR)
+
+        mask = np.zeros(masked_image.shape[:2], dtype=np.uint8)
+        print(masked_image.shape)
+        print(mask.shape)
+        
+        if len(masked_image.shape) == 3 and masked_image.shape[2] == 3:
+            mask = cv2.merge([mask, mask, mask])
+        mask[y0:y1, x0:x1] = [255,255,255]
+        masked_image[y0:y1, x0:x1] = [255, 255, 255]
+
+        # Apply the mask to the image
+        # print(mask.shape)
+        masked_image = cv2.bitwise_and(masked_image, mask)
+
+        
+
+        # return masked_image
+        return image_with_rectangle
+
+
+    return image_with_rectangle
+
+
+def create_masked_image_from_rectange(image_with_rectangle):
+    if (x0!=x1) and (y0!=y1):
+        masked_image = image_with_rectangle.copy()
+
+        masked_image=cv2.cvtColor(np.array(masked_image), cv2.COLOR_RGB2BGR)
+
+        mask = np.zeros(masked_image.shape[:2], dtype=np.uint8)
+        print(masked_image.shape)
+        print(mask.shape)
+        
+        if len(masked_image.shape) == 3 and masked_image.shape[2] == 3:
+            mask = cv2.merge([mask, mask, mask])
+        mask[y0:y1, x0:x1] = [255,255,255]
+        masked_image[y0:y1, x0:x1] = [255, 255, 255]
+
+        # Apply the mask to the image
+        # print(mask.shape)
+        masked_image = cv2.bitwise_and(masked_image, mask)
+
+        return masked_image
+    
+    return image_with_rectangle
+    
 
 with gr.Blocks(css=css, title="SEGMEDIT") as demo:
     with gr.Row():
@@ -277,11 +354,58 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
                 clear_btn_p = gr.Button("Restart", variant="secondary")
                 # create a button which finalizes the mask and takes to new block
                 erase_btn = gr.Button("Erase", variant="secondary")
-                remove_bg_btn = gr.Button("Remove Background", variant ="secondary")
                 # Description
                 gr.Markdown(description_p)
 
+
+    with gr.Tab("Box selection"):
+        # Images
+        with gr.Row(variant="panel"):
+            with gr.Column(scale=1):
+                cond_img_b.render()
+
+            with gr.Column(scale=1):
+                segm_img_b.render()
+
+        # Submit & Clear
+        with gr.Row():
+            with gr.Column():
+                with gr.Row():
+                    add_or_remove_box = gr.Radio(
+                        label="Box Prompts",
+                        choices=["Add Box", "Remove Box"],
+                        value="Add Box",
+                        info="Positive boxes are included in the segment, negative boxes are excluded",
+                    )
+
+                    text_prompt_box = gr.Textbox(
+                        label="Text Prompts", lines=6, interactive=True
+                    )
+
+                gr.Markdown("Try some of the examples below ⬇️")
+                gr.Examples(
+                    examples=examples,
+                    inputs=[cond_img_b],
+                )
+
+            with gr.Column():
+                segment_btn_b = gr.Button("Start segmenting/editing", variant="primary")
+                clear_btn_b = gr.Button("Restart", variant="secondary")
+                erase_btn_b = gr.Button("Erase", variant="secondary")
+                edit_btn_b = gr.Button("Edit", variant="secondary")
+                gr.Markdown(description_p)
+
+    # cond_img_b.change(fn=start_rectangle, inputs=[cond_img_b,add_or_remove_box], outputs=[cond_img_b])
+    # cond_img_b.change(fn=draw_rectangle, inputs=[cond_img_b,add_or_remove_box], outputs=[cond_img_b])
+    # cond_img_b.change(fn=finalize_rectangle, inputs=[cond_img_b,add_or_remove_box], outputs=[cond_img_b])
+
+
+
+
     cond_img_p.select(get_points_with_draw, [cond_img_p, add_or_remove], cond_img_p)
+    cond_img_b.select(handle_rectangle_events, [cond_img_b, add_or_remove_box], [cond_img_b])
+
+    # cond_img_b=create_masked_image_from_rectange(cond_img_b)
 
     segment_btn_p.click(
         segment_with_points,
@@ -289,18 +413,38 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
         outputs=[segm_img_p, cond_img_p],
     )
 
+    edit_btn_b.click(
+        mask_with_rectangle,
+        inputs=[cond_img_b],
+        outputs=segm_img_b        
+    )
+
     def clear():
+        global global_start_point
+        global current_rectangle
+
+        global_start_point=None
+        current_rectangle=None
         return None, None
+    
+    # def clear_b():  
+    #     global_start_point = None
+    #     current_rectangle = None
+
+    #     return None, None
+    
 
     def clear_text():
         return None, None, None
 
     # clear_btn_e.click(clear, outputs=[cond_img_e, segm_img_e])
     clear_btn_p.click(clear, outputs=[cond_img_p, segm_img_p])
+    clear_btn_b.click(clear, outputs=[cond_img_b, segm_img_b])
 
     # close the demo and take to new block when finalize button is clicked
     erase_btn.click(erase, inputs=[cond_img_p, segm_img_p], outputs=[cond_img_p, segm_img_p])
-    remove_bg_btn.click(remove_background, inputs=[cond_img_p, segm_img_p], outputs=[cond_img_p,segm_img_p])
+    erase_btn_b.click(erase_with_box, inputs=[cond_img_b, segm_img_b], outputs=[cond_img_b, segm_img_b])
+
 
 if __name__ == "__main__":
     demo.queue()
