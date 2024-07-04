@@ -1,17 +1,121 @@
 import os
-
+import cv2
 import gradio as gr
 import numpy as np
 import torch
 from mobile_sam import SamAutomaticMaskGenerator, SamPredictor, sam_model_registry
-from PIL import Image, ImageDraw
+from PIL import ImageDraw
 from utils.tools import box_prompt, format_results, point_prompt
 from utils.tools_gradio import fast_process
 
 from utils.editing import inpaint_area
+from PIL import Image, ImageOps
+from text_editing_SD2 import BlendedLatnetDiffusion
 
 
-device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
+# Latent diffusion
+def latent_diffusion(prompt):
+    bld = BlendedLatnetDiffusion()
+    results = bld.edit_image(
+        'input.png',
+        'mask.png',
+        prompts = [prompt] * bld.args.batch_size,
+        blending_percentage=bld.args.blending_start_percentage,
+    )
+    results_flat = np.concatenate(results, axis=1)
+    im = Image.fromarray(results_flat)
+    
+    return im
+
+TARGET_WIDTH = 512
+TARGET_HEIGHT = 512
+
+def diffuse_image_drag(im_editor, prompt):
+    
+    # Input Image
+    inputImage = Image.open(im_editor['background'])
+    input_image = inputImage.resize((512,512))
+    input_image = input_image.save('./input.png', 'PNG')
+    print('input.png is saved')
+    
+    # Convert mask to black and white
+    mask_image = Image.open(im_editor['layers'][0])
+    mask_gray = mask_image.convert('1')
+    mask_resized = mask_gray.resize((512, 512))
+    mask_resized = mask_resized.save('./mask.png', "PNG")
+    
+    image = latent_diffusion(prompt)
+    
+    return image
+
+
+def diffuse_image_box(prompt):
+    image = latent_diffusion(prompt)
+    return image
+    
+
+global_start_point = None
+current_rectangle = None
+
+def handle_rectangle_events(image,label, evt: gr.SelectData):
+    global global_start_point, current_rectangle
+    # Save image
+    image.save('./input.png', 'PNG')
+    print('input.png is saved')
+
+    x, y = evt.index[0], evt.index[1]
+    if global_start_point is None:
+        global_start_point = (x, y)
+    x0, y0 = global_start_point
+    x1, y1 = x, y
+
+
+
+    if (x0>x1):
+        temp=x0
+        x0=x1
+        x1=temp
+
+    if (y0>y1):
+        temp=y0
+        y0=y1
+        y1=temp
+
+    image_with_rectangle = image.copy()
+    draw = ImageDraw.Draw(image_with_rectangle)
+    draw.rectangle([x0, y0, x1, y1], outline="red", width=3)
+
+
+    current_rectangle = [x0, y0, x1, y1]
+
+    if (x0!=x1) and (y0!=y1):
+        masked_image = image_with_rectangle.copy()
+
+        masked_image=cv2.cvtColor(np.array(masked_image), cv2.COLOR_RGB2BGR)
+
+        mask = np.zeros(masked_image.shape[:2], dtype=np.uint8)
+        print(masked_image.shape)
+        print(mask.shape)
+        
+        if len(masked_image.shape) == 3 and masked_image.shape[2] == 3:
+            mask = cv2.merge([mask, mask, mask])
+        mask[y0:y1, x0:x1] = [255,255,255]
+        masked_image[y0:y1, x0:x1] = [255, 255, 255]
+
+        # Apply the mask to the image
+        print(mask.shape)
+        masked_image = cv2.bitwise_and(masked_image, mask)
+        cv2.imwrite('./mask.png', masked_image)
+        print('mask.png is saved')
+        
+        image = latent_diffusion
+        return masked_image
+
+
+
+
+# Setting up device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 sam_checkpoint = "models/mobile_sam.pt"
@@ -183,6 +287,10 @@ segm_img_p = gr.Image(
     label="Segmented Image with points", interactive=False, type="pil"
 )
 
+# Latent Diffusion
+cond_img_b = gr.Image(label="Input with box", value=default_example[0], type="pil")
+segm_img_b = gr.Image(label="Diffused image after box selection", interactive=False, type="pil")
+
 global_points = []
 global_point_label = []
 
@@ -201,28 +309,6 @@ def erase(image, display_img):
     global mask
     inpainted_image = inpaint_area(image, mask)
     return display_img, inpainted_image
-
-def remove_background(image, display_img):
-    global mask
-    mask = np.array(mask)
-    if len(mask.shape) == 3 and mask.shape[2] > 1:
-        combined_mask = np.sum(mask, axis=2)  
-        combined_mask = np.clip(combined_mask, 0, 1)  
-    else:
-        combined_mask = mask
-
-    binary_mask = combined_mask.astype(np.uint8)
-    
-    image_np = np.array(image)
-    
-    if len(image_np.shape) == 3:
-        binary_mask = np.repeat(binary_mask[:, :, np.newaxis], 3, axis=2)
-    
-    foreground = image_np * binary_mask
-    
-    foreground_image = Image.fromarray(foreground)
-    
-    return display_img, foreground_image
 
 
 with gr.Blocks(css=css, title="SEGMEDIT") as demo:
@@ -277,31 +363,111 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
                 clear_btn_p = gr.Button("Restart", variant="secondary")
                 # create a button which finalizes the mask and takes to new block
                 erase_btn = gr.Button("Erase", variant="secondary")
-                remove_bg_btn = gr.Button("Remove Background", variant ="secondary")
                 # Description
                 gr.Markdown(description_p)
+    
+    with gr.Tab("Box selection"):
+        # Images
+        with gr.Row(variant="panel"):
+            with gr.Column(scale=1):
+                cond_img_b.render()
+
+            with gr.Column(scale=1):
+                segm_img_b.render()
+
+        # Submit & Clear
+        with gr.Row():
+            with gr.Column():
+                with gr.Row():
+                    add_or_remove_box = gr.Radio(
+                        label="Box Prompts",
+                        choices=["Add Box", "Remove Box"],
+                        value="Add Box",
+                        info="Positive boxes are included in the segment, negative boxes are excluded",
+                    )
+
+                    text_prompt_box = gr.Textbox(
+                        label="Text Prompts", lines=6, interactive=True
+                    )
+
+                gr.Markdown("Try some of the examples below ⬇️")
+                gr.Examples(
+                    examples=examples,
+                    inputs=[cond_img_b],
+                )
+
+            with gr.Column():
+                segment_btn_b = gr.Button("Start segmenting/editing", variant="primary")
+                clear_btn_b = gr.Button("Restart", variant="secondary")
+                erase_btn_b = gr.Button("Erase", variant="secondary")
+                edit_btn_b = gr.Button("Edit", variant="secondary")
+                gr.Markdown(description_p)
+
+    with gr.Tab("Drag Selection"):
+        # Submit & Clear
+        with gr.Row():
+            with gr.Column():
+                with gr.Row():
+                    drag_img = gr.ImageEditor(label="Uplaod am Image and Draw a Mask over it", type="filepath")
+                    
+                    
+
+            with gr.Column():
+                text_prompt_box = gr.Textbox(
+                        label="Text Prompts", lines=6, interactive=True
+                    )
+                diffuse_image_btn = gr.Button("Edit", variant="Primary")
+                gr.Markdown(description_p)
+                drag_output = gr.Image(label="Diffused Image", type='pil')
+                
+                
+
 
     cond_img_p.select(get_points_with_draw, [cond_img_p, add_or_remove], cond_img_p)
+    cond_img_b.select(handle_rectangle_events, [cond_img_b, add_or_remove_box], cond_img_b)
 
     segment_btn_p.click(
         segment_with_points,
         inputs=[cond_img_p],
         outputs=[segm_img_p, cond_img_p],
     )
+    
+    # Box selection diffusion model button
+    edit_btn_b.click(
+        diffuse_image_box,
+        inputs=[text_prompt_box],
+        outputs=segm_img_b        
+    )
+    # Drag selectino diffusion model button
+    diffuse_image_btn.click(
+        diffuse_image_drag,
+        inputs = [drag_img, text_prompt_box],
+        outputs=[drag_output]
+        )
 
+    
     def clear():
-        return None, None
+            global global_start_point
+            global current_rectangle
+
+            global_start_point=None
+            current_rectangle=None
+            return None, None
 
     def clear_text():
         return None, None, None
 
     # clear_btn_e.click(clear, outputs=[cond_img_e, segm_img_e])
     clear_btn_p.click(clear, outputs=[cond_img_p, segm_img_p])
-
+    clear_btn_b.click(clear, outputs=[cond_img_b, segm_img_b])
+    
     # close the demo and take to new block when finalize button is clicked
     erase_btn.click(erase, inputs=[cond_img_p, segm_img_p], outputs=[cond_img_p, segm_img_p])
-    remove_bg_btn.click(remove_background, inputs=[cond_img_p, segm_img_p], outputs=[cond_img_p,segm_img_p])
+    
+    
+    
+
 
 if __name__ == "__main__":
     demo.queue()
-    demo.launch(share=True)
+    demo.launch(debug=True)
