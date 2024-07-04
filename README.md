@@ -1,8 +1,8 @@
 ---
-title: adv-photo-editing
+title: segmedit
 app_file: app.py
 sdk: gradio
-sdk_version: 4.8.0
+sdk_version: 4.37.2
 ---
 # SegmEdit
 
@@ -15,10 +15,9 @@ git clone https://github.com/dsgiitr/segmedit.git
 ```
 - Install dependencies
 ```
-pip install -r requirements.txt
+pip install -r constraints.txt
 ```
 - Run app.py
 ``` 
 python app.py
 ```
-
