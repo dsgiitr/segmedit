@@ -19,3 +19,6 @@ def inpaint_area(image, mask, blur_radius=5):
     mask = Image.fromarray(mask).convert('L')
 
     return simple_lama(image, mask)
+
+def inpaint_area_using_box():
+    pass

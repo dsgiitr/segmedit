@@ -4,7 +4,7 @@ import gradio as gr
 import numpy as np
 import torch
 from mobile_sam import SamAutomaticMaskGenerator, SamPredictor, sam_model_registry
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw , ImageFilter
 from utils.tools import box_prompt, format_results, point_prompt
 from utils.tools_gradio import fast_process
 
@@ -188,6 +188,7 @@ segm_img_p = gr.Image(
 
 
 cond_img_b = gr.Image(label="Input with box", value=default_example[0], type="pil")
+edit_img_p = gr.Image(label="Edited image", value=default_example[0], type="pil")
 segm_img_b = gr.Image(label="Segmented Image with box", interactive=False, type="pil")
 
 global_points = []
@@ -202,6 +203,14 @@ input_size_slider = gr.components.Slider(
     info="Our model was trained on a size of 1024",
 )
 
+def mask_with_segmentation(segm_img_p):
+    global mask
+    mask = mask.convert('L').filter(ImageFilter.GaussianBlur(radius=5))
+    if not isinstance(mask, np.ndarray):
+        mask = np.array(mask)
+    binary_mask = (mask > 0).astype(np.uint8) * 255
+    mask_img = Image.fromarray(binary_mask)
+    return mask_img
 
 def erase(image, display_img):
     # inpaint the image with the mask
@@ -322,6 +331,9 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
             with gr.Column(scale=1):
                 segm_img_p.render()
 
+            with gr.Column(scale=1):
+                edit_img_p.render()
+
         # Submit & Clear
         with gr.Row():
             with gr.Column():
@@ -354,6 +366,7 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
                 clear_btn_p = gr.Button("Restart", variant="secondary")
                 # create a button which finalizes the mask and takes to new block
                 erase_btn = gr.Button("Erase", variant="secondary")
+                edit_btn_p = gr.Button("Edit", variant="secondary")
                 # Description
                 gr.Markdown(description_p)
 
@@ -412,7 +425,11 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
         inputs=[cond_img_p],
         outputs=[segm_img_p, cond_img_p],
     )
-
+    edit_btn_p.click(
+        mask_with_segmentation,
+        inputs=[segm_img_p],
+        outputs=edit_img_p        
+    )
     edit_btn_b.click(
         mask_with_rectangle,
         inputs=[cond_img_b],
