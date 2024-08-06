@@ -226,7 +226,7 @@ def segment_with_points(
     masks, scores, logits = predictor.predict(
         point_coords=scaled_points,
         point_labels=scaled_point_label,
-        multimask_output=True,
+        multimask_output=False,
     )
 
     results = format_results(masks, scores, logits, 0)
