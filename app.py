@@ -4,7 +4,7 @@ import gradio as gr
 import numpy as np
 import torch
 from mobile_sam import SamAutomaticMaskGenerator, SamPredictor, sam_model_registry
-from PIL import Image, ImageDraw
+from PIL import ImageDraw, ImageFilter
 from utils.tools import box_prompt, format_results, point_prompt
 from utils.tools_gradio import fast_process
 
@@ -52,10 +52,25 @@ def diffuse_image_drag(im_editor, prompt):
 def diffuse_image_box(prompt):
     image = latent_diffusion(prompt)
     return image
+
+def mask_with_segmentation(segm_img_p, prompt):
+    global mask
+    mask = mask.convert('L').filter(ImageFilter.GaussianBlur(radius=5))
+    if not isinstance(mask, np.ndarray):
+        mask = np.array(mask)
+    binary_mask = (mask > 0).astype(np.uint8) * 255
+    mask_img = Image.fromarray(binary_mask)
+    mask_img.save("./mask.png", "PNG")
+    print("mask.png saved")
     
+    output_img = diffuse_image_box(prompt)
+    
+    return output_img
+
 
 global_start_point = None
 current_rectangle = None
+x0,y0,x1,y1=0,0,0,0
 
 def handle_rectangle_events(image,label, evt: gr.SelectData):
     global global_start_point, current_rectangle
@@ -108,14 +123,37 @@ def handle_rectangle_events(image,label, evt: gr.SelectData):
         cv2.imwrite('./mask.png', masked_image)
         print('mask.png is saved')
         
-        image = latent_diffusion
+        return image_with_rectangle
+    
+    return image_with_rectangle
+
+
+def create_masked_image_from_rectange(image_with_rectangle):
+    if (x0!=x1) and (y0!=y1):
+        masked_image = image_with_rectangle.copy()
+
+        masked_image=cv2.cvtColor(np.array(masked_image), cv2.COLOR_RGB2BGR)
+
+        mask = np.zeros(masked_image.shape[:2], dtype=np.uint8)
+        print(masked_image.shape)
+        print(mask.shape)
+        
+        if len(masked_image.shape) == 3 and masked_image.shape[2] == 3:
+            mask = cv2.merge([mask, mask, mask])
+        mask[y0:y1, x0:x1] = [255,255,255]
+        masked_image[y0:y1, x0:x1] = [255, 255, 255]
+
+        # Apply the mask to the image
+        # print(mask.shape)
+        masked_image = cv2.bitwise_and(masked_image, mask)
+
         return masked_image
-
-
+    
+    return image_with_rectangle
 
 
 # Setting up device
-device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 sam_checkpoint = "models/mobile_sam.pt"
@@ -166,6 +204,8 @@ def segment_everything(
     global mask_generator
 
     input_size = int(input_size)
+    
+    
     w, h = image.size
     scale = input_size / max(w, h)
     new_w = int(w * scale)
@@ -201,7 +241,8 @@ def segment_with_points(
 ):
     global global_points
     global global_point_label
-
+    
+    
     input_size = int(input_size)
     w, h = image.size
     scale = input_size / max(w, h)
@@ -259,7 +300,9 @@ def segment_with_points(
 def get_points_with_draw(image, label, evt: gr.SelectData):
     global global_points
     global global_point_label
-
+    
+    image.save('input.png', "PNG")
+    print("input.png saved")
     x, y = evt.index[0], evt.index[1]
     point_radius, point_color = 15, (255, 255, 0) if label == "Add Area" else (
         255,
@@ -309,28 +352,6 @@ def erase(image, display_img):
     global mask
     inpainted_image = inpaint_area(image, mask)
     return display_img, inpainted_image
-
-def remove_background(image, display_img):
-    global mask
-    mask = np.array(mask)
-    if len(mask.shape) == 3 and mask.shape[2] > 1:
-        combined_mask = np.sum(mask, axis=2)  
-        combined_mask = np.clip(combined_mask, 0, 1)  
-    else:
-        combined_mask = mask
-
-    binary_mask = combined_mask.astype(np.uint8)
-    
-    image_np = np.array(image)
-    
-    if len(image_np.shape) == 3:
-        binary_mask = np.repeat(binary_mask[:, :, np.newaxis], 3, axis=2)
-    
-    foreground = image_np * binary_mask
-    
-    foreground_image = Image.fromarray(foreground)
-    
-    return display_img, foreground_image
 
 
 with gr.Blocks(css=css, title="SEGMEDIT") as demo:
@@ -385,7 +406,7 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
                 clear_btn_p = gr.Button("Restart", variant="secondary")
                 # create a button which finalizes the mask and takes to new block
                 erase_btn = gr.Button("Erase", variant="secondary")
-                remove_bg_btn = gr.Button("Remove Background", variant ="secondary")
+                edit_btn_p = gr.Button("Edit", variant="secondary")
                 # Description
                 gr.Markdown(description_p)
     
@@ -448,7 +469,9 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
 
     cond_img_p.select(get_points_with_draw, [cond_img_p, add_or_remove], cond_img_p)
     cond_img_b.select(handle_rectangle_events, [cond_img_b, add_or_remove_box], cond_img_b)
-
+    
+    cond_img_b = create_masked_image_from_rectange(cond_img_b)
+    
     segment_btn_p.click(
         segment_with_points,
         inputs=[cond_img_p],
@@ -461,7 +484,14 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
         inputs=[text_prompt_box],
         outputs=segm_img_b        
     )
-    # Drag selectino diffusion model button
+    
+    # Mask and Editing using point prompt
+    edit_btn_p.click(
+        mask_with_segmentation,
+        inputs=[segm_img_p, text_prompt],
+        outputs=segm_img_p    
+    )
+    # Drag selection diffusion model button
     diffuse_image_btn.click(
         diffuse_image_drag,
         inputs = [drag_img, text_prompt_box],
@@ -486,8 +516,11 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
     
     # close the demo and take to new block when finalize button is clicked
     erase_btn.click(erase, inputs=[cond_img_p, segm_img_p], outputs=[cond_img_p, segm_img_p])
-    remove_bg_btn.click(remove_background, inputs=[cond_img_p, segm_img_p], outputs=[cond_img_p,segm_img_p])
+    
+    
+    
+
 
 if __name__ == "__main__":
     demo.queue()
-    demo.launch(share=True)
+    demo.launch(debug=True)
