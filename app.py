@@ -331,8 +331,8 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
             with gr.Column(scale=1):
                 segm_img_p.render()
 
-            with gr.Column(scale=1):
-                edit_img_p.render()
+            # with gr.Column(scale=1):
+            #     edit_img_p.render()
 
         # Submit & Clear
         with gr.Row():
