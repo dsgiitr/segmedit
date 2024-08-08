@@ -24,7 +24,6 @@ def latent_diffusion(prompt):
     )
     results_flat = np.concatenate(results, axis=1)
     im = Image.fromarray(results_flat)
-    
     return im
 
 TARGET_WIDTH = 512
@@ -46,7 +45,14 @@ def diffuse_image_drag(im_editor, prompt):
     
     image = latent_diffusion(prompt)
     
-    return image
+    # Split the 2048x512 image into 4 images of 512x512 pixels each
+    images = []
+    for i in range(4):
+        x = i * 512
+        img = image.crop((x, 0, x + 512, 512))
+        images.append(img)
+    
+    return images
 
 
 def diffuse_image_box(prompt):
@@ -267,7 +273,7 @@ def segment_with_points(
     masks, scores, logits = predictor.predict(
         point_coords=scaled_points,
         point_labels=scaled_point_label,
-        multimask_output=True,
+        multimask_output=False,
     )
 
     results = format_results(masks, scores, logits, 0)
@@ -423,12 +429,12 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
         with gr.Row():
             with gr.Column():
                 with gr.Row():
-                    add_or_remove_box = gr.Radio(
-                        label="Box Prompts",
-                        choices=["Add Box", "Remove Box"],
-                        value="Add Box",
-                        info="Positive boxes are included in the segment, negative boxes are excluded",
-                    )
+                    # add_or_remove_box = gr.Radio(
+                    #     label="Box Prompts",
+                    #     choices=["Add Box", "Remove Box"],
+                    #     value="Add Box",
+                    #     info="Positive boxes are included in the segment, negative boxes are excluded",
+                    # )
 
                     text_prompt_box = gr.Textbox(
                         label="Text Prompts", lines=6, interactive=True
@@ -449,26 +455,39 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
 
     with gr.Tab("Drag Selection"):
         # Submit & Clear
+
+        with gr.Row(variant="panel"):
+            with gr.Column(scale=1):
+                brush = gr.Brush(default_color="#ffffff")
+                drag_img = gr.ImageEditor(brush=brush, label="Upload an Image and draw a Mask over it", type="filepath")
+
+            with gr.Column(scale=1):
+                drag_output = gr.Gallery(label="Generated images", show_label=False, elem_id="gallery",
+                                         columns=[4], rows=[1], object_fit="contain", height="auto")
+
         with gr.Row():
             with gr.Column():
-                with gr.Row():
-                    drag_img = gr.ImageEditor(label="Uplaod am Image and Draw a Mask over it", type="filepath")
-                    
-                    
+                text_prompt_box = gr.Textbox(
+                    label="Text Prompts", lines=6, interactive=True
+                )   
+                gr.Markdown("Try some of the examples below ⬇️")
+                gr.Examples(
+                    examples=examples,
+                    inputs=drag_img,
+                    outputs=drag_img,
+                    examples_per_page=4,
+                )
 
             with gr.Column():
-                text_prompt_box = gr.Textbox(
-                        label="Text Prompts", lines=6, interactive=True
-                    )
-                diffuse_image_btn = gr.Button("Edit", variant="Primary")
+                diffuse_image_btn = gr.Button("Start editing", variant="primary")
+                clear_btn_d = gr.Button("Restart", variant="secondary")
                 gr.Markdown(description_p)
-                drag_output = gr.Image(label="Diffused Image", type='pil')
                 
                 
 
 
     cond_img_p.select(get_points_with_draw, [cond_img_p, add_or_remove], cond_img_p)
-    cond_img_b.select(handle_rectangle_events, [cond_img_b, add_or_remove_box], cond_img_b)
+    cond_img_b.select(handle_rectangle_events, [cond_img_b], cond_img_b)
     
     cond_img_b = create_masked_image_from_rectange(cond_img_b)
     
@@ -513,6 +532,8 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
     # clear_btn_e.click(clear, outputs=[cond_img_e, segm_img_e])
     clear_btn_p.click(clear, outputs=[cond_img_p, segm_img_p])
     clear_btn_b.click(clear, outputs=[cond_img_b, segm_img_b])
+    clear_btn_d.click(clear, outputs=[drag_img, drag_output])
+    
     
     # close the demo and take to new block when finalize button is clicked
     erase_btn.click(erase, inputs=[cond_img_p, segm_img_p], outputs=[cond_img_p, segm_img_p])
@@ -523,4 +544,4 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
 
 if __name__ == "__main__":
     demo.queue()
-    demo.launch(debug=True)
+    demo.launch(debug=True, share=True)
