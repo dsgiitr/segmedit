@@ -429,12 +429,11 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
         with gr.Row():
             with gr.Column():
                 with gr.Row():
-                    # add_or_remove_box = gr.Radio(
-                    #     label="Box Prompts",
-                    #     choices=["Add Box", "Remove Box"],
-                    #     value="Add Box",
-                    #     info="Positive boxes are included in the segment, negative boxes are excluded",
-                    # )
+                    add_or_remove_box = gr.Radio(
+                        label="Box Prompts",
+                        choices=["Add Box"],
+                        value="Add Box",
+                    )
 
                     text_prompt_box = gr.Textbox(
                         label="Text Prompts", lines=6, interactive=True
@@ -447,10 +446,9 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
                 )
 
             with gr.Column():
-                segment_btn_b = gr.Button("Start segmenting/editing", variant="primary")
+                edit_btn_b = gr.Button("Edit", variant="primary")
                 clear_btn_b = gr.Button("Restart", variant="secondary")
-                erase_btn_b = gr.Button("Erase", variant="secondary")
-                edit_btn_b = gr.Button("Edit", variant="secondary")
+                # erase_btn_b = gr.Button("Erase", variant="secondary")
                 gr.Markdown(description_p)
 
     with gr.Tab("Drag Selection"):
@@ -487,7 +485,7 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
 
 
     cond_img_p.select(get_points_with_draw, [cond_img_p, add_or_remove], cond_img_p)
-    cond_img_b.select(handle_rectangle_events, [cond_img_b], cond_img_b)
+    cond_img_b.select(handle_rectangle_events, [cond_img_b,add_or_remove_box], cond_img_b)
     
     cond_img_b = create_masked_image_from_rectange(cond_img_b)
     
