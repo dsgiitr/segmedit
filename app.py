@@ -270,11 +270,18 @@ def segment_with_points(
 
     nd_image = np.array(image)
     predictor.set_image(nd_image)
-    masks, scores, logits = predictor.predict(
+    if np.all(scaled_point_label==1):
+        masks, scores, logits = predictor.predict(
+        point_coords=scaled_points,
+        point_labels=scaled_point_label,
+        multimask_output=True,
+        )
+    else:
+        masks, scores, logits = predictor.predict(
         point_coords=scaled_points,
         point_labels=scaled_point_label,
         multimask_output=False,
-    )
+        )
 
     results = format_results(masks, scores, logits, 0)
 
