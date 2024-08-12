@@ -256,9 +256,8 @@ def segment_with_points(
     new_h = int(h * scale)
     image = image.resize((new_w, new_h))
 
-    scaled_points = np.array(
-        [[int(x * scale) for x in point] for point in global_points]
-    )
+    global_points = [[int(x * scale) for x in point] for point in global_points]
+    scaled_points = np.array(global_points)
     scaled_point_label = np.array(global_point_label)
 
     if scaled_points.size == 0 and scaled_point_label.size == 0:
@@ -304,8 +303,8 @@ def segment_with_points(
         withContours=withContours,
     )
 
-    global_points = []
-    global_point_label = []
+    # global_points = []
+    # global_point_label = []
     # return fig, None
     return fig, image
 
@@ -526,6 +525,10 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
     def clear():
             global global_start_point
             global current_rectangle
+            global global_points
+            global global_point_label
+            global_points = []
+            global_point_label = []
 
             global_start_point=None
             current_rectangle=None
