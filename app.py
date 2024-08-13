@@ -24,7 +24,16 @@ def latent_diffusion(prompt):
     )
     results_flat = np.concatenate(results, axis=1)
     im = Image.fromarray(results_flat)
-    return im
+
+    # Split the 2048x512 image into 4 images of 512x512 pixels each
+    images = []
+    for i in range(4):
+        x = i * 512
+        img = im.crop((x, 0, x + 512, 512))
+        images.append(img)
+    
+    return images
+
 
 TARGET_WIDTH = 512
 TARGET_HEIGHT = 512
@@ -43,21 +52,15 @@ def diffuse_image_drag(im_editor, prompt):
     mask_resized = mask_gray.resize((512, 512))
     mask_resized = mask_resized.save('./mask.png', "PNG")
     
-    image = latent_diffusion(prompt)
-    
-    # Split the 2048x512 image into 4 images of 512x512 pixels each
-    images = []
-    for i in range(4):
-        x = i * 512
-        img = image.crop((x, 0, x + 512, 512))
-        images.append(img)
+    images = latent_diffusion(prompt)
     
     return images
 
 
 def diffuse_image_box(prompt):
-    image = latent_diffusion(prompt)
-    return image
+    images = latent_diffusion(prompt)
+
+    return images
 
 def mask_with_segmentation(segm_img_p, prompt):
     global mask
@@ -344,7 +347,7 @@ segm_img_p = gr.Image(
 
 # Latent Diffusion
 cond_img_b = gr.Image(label="Input with box", value=default_example[0], type="pil")
-segm_img_b = gr.Image(label="Diffused image after box selection", interactive=False, type="pil")
+# segm_img_b = gr.Image(label="Diffused image after box selection", interactive=False, type="pil")
 
 global_points = []
 global_point_label = []
@@ -429,7 +432,8 @@ with gr.Blocks(css=css, title="SEGMEDIT") as demo:
                 cond_img_b.render()
 
             with gr.Column(scale=1):
-                segm_img_b.render()
+                segm_img_b = gr.Gallery(label="Generated images", show_label=False, elem_id="gallery",
+                                         columns=[4], rows=[1], object_fit="contain", height="auto")
 
         # Submit & Clear
         with gr.Row():
