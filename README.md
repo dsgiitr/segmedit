@@ -1,6 +1,30 @@
 # AI-Powered Photo Editor
 
-Implementation of SAM, LaMa, and blended latent diffusion models for advanced image editing using Gradio UI.
+[![Hugging Face Spaces](https://img.shields.io/badge/🤗-Hugging%20Face%20Spaces-blue)](https://huggingface.co/spaces/aakashks/adv-photo-editing)
+
+## Overview
+
+The AI-Powered Photo Editor is an advanced image editing tool that integrates state-of-the-art AI models to provide users with powerful editing capabilities. This tool is built using a Gradio interface, making it user-friendly while leveraging cutting-edge techniques like SAM, LaMa, and blended latent diffusion for various image manipulation tasks.
+
+### Key Features
+
+- **Object Selection**: Utilize the SAM (Segment Anything Model) for precise object selection using point or box prompts.
+- **Object Removal**: Seamlessly remove objects and fill backgrounds using LaMa inpainting.
+- **Text-Guided Editing**: Transform selected objects based on text prompts with blended latent diffusion.
+- **Custom Area Editing**: Draw and select specific areas for targeted modifications.
+
+### Integrated AI Models
+
+1. **SAM (Segment Anything Model)**: Ensures accurate object segmentation and selection.
+2. **LaMa (Large Mask Inpainting)**: Provides high-quality inpainting after object removal.
+3. **Blended Latent Diffusion**: Facilitates text-guided object transformation and editing.
+
+### Additional Utilities
+
+- **Background Removal**
+- **Sticker Creation**
+
+These features make the toolkit versatile for various image manipulation tasks, offering both basic and advanced functionalities.
 
 ## Diagram
 
@@ -35,33 +59,32 @@ graph TD
     G -.-> K
 ```
 
-## Project Description
+## Installation & Usage
 
-This project offers a comprehensive photo editing tool with the following key features:
+### Prerequisites
 
-- **Object Selection**: Utilizes SAM (Segment Anything Model) for precise object selection using point or box prompts.
-- **Object Removal**: Implements LaMa inpainting for seamless object removal and background filling.
-- **Text-Guided Editing**: Employs blended latent diffusion for transforming selected objects based on text prompts.
-- **Custom Area Editing**: Allows users to draw and select specific areas for targeted modifications.
+Ensure you have Python (>=3.9) and the necessary dependencies installed.
 
-The user interface is built using Gradio, providing an intuitive platform for users to interact with these advanced AI models. The project integrates multiple state-of-the-art techniques:
+### Clone the Repository
 
-1. **SAM**: For accurate object segmentation and selection.
-2. **LaMa**: For high-quality inpainting after object removal.
-3. **Blended Latent Diffusion**: For text-guided object transformation and editing.
-
-Additional utilities include background removal and sticker creation, enhancing the toolkit's versatility for various image manipulation tasks.
-
-## Setup
-- Clone 
-```
+```bash
 git clone https://github.com/dsgiitr/segmedit.git
 ```
-- Install dependencies
-```
+
+### Install Dependencies
+
+Navigate to the project directory and install the required Python packages:
+
+```bash
 pip install -r requirements.txt
 ```
-- Run app.py
-``` 
+
+### Running the Application
+
+Execute the following command to start the application:
+
+```bash
 python app.py
 ```
+
+This will launch the Gradio interface, where you can interact with the AI-powered photo editor.
