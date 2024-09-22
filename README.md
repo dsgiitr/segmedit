@@ -26,6 +26,22 @@ The AI-Powered Photo Editor is an advanced image editing tool that integrates st
 
 These features make the toolkit versatile for various image manipulation tasks, offering both basic and advanced functionalities.
 
+## Demo
+
+
+
+https://github.com/user-attachments/assets/439d336f-c5ba-4b53-bb1d-d00977e8f6f5
+
+
+
+https://github.com/user-attachments/assets/4ed3ad1c-d35b-4298-9552-495c465bd62e
+
+
+
+https://github.com/user-attachments/assets/5636c4f7-743d-4d4c-8390-1f10fc2ffa53
+
+
+
 ## Diagram
 
 ```mermaid
